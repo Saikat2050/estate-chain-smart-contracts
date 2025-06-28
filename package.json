@@ -1,0 +1,22 @@
+{
+  "name": "estate-chain-smart-contracts",
+  "version": "1.0.0",
+  "description": "- All smart contracts (Solidity + Hardhat/Foundry) - Deployment scripts - ABIs - Tests",
+  "main": "hardhat.config.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.0.0",
+    "hardhat": "^2.25.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.3.0"
+  }
+}
