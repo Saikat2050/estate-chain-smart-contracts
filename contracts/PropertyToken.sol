@@ -25,11 +25,24 @@ contract PropertyToken is ERC1155, Ownable {
     mapping(uint256 => uint256) public totalMinted;
     uint256 public nextTokenId;
 
+    struct Lease {
+        address lessee;
+        uint256 percentage;
+        uint256 leaseStart;
+        uint256 leaseEnd;
+        uint256 leasePrice;
+    }
+
+    mapping(uint256 => Lease[]) public propertyLeases;
+
+    event PropertyMinted(address indexed creator, uint256 indexed tokenId, string uri);
+    event PropertyPurchased(address indexed buyer, uint256 indexed tokenId, uint256 amount, uint256 ethPaid);
+    event LandLeased(address indexed lessee, uint256 indexed tokenId, uint256 percentage, uint256 leaseStart, uint256 leaseEnd, uint256 leasePrice);
+
     constructor(address _priceFeed) ERC1155("") Ownable(msg.sender) {
         priceFeed = AggregatorV3Interface(_priceFeed);
     }
 
-    /// Mint a new property token
     function mintProperty(
         uint256 amount,
         uint256 priceInUsd,
@@ -47,25 +60,60 @@ contract PropertyToken is ERC1155, Ownable {
 
         _mint(msg.sender, tokenId, amount, "");
         totalMinted[tokenId] = amount;
+
+        emit PropertyMinted(msg.sender, tokenId, uri_);
     }
 
-    /// Purchase a token by paying ETH using Chainlink conversion
+    function setTokenURI(uint256 tokenId, string memory newURI) external {
+        require(msg.sender == properties[tokenId].creator, "Only creator can update URI");
+        properties[tokenId].uri = newURI;
+    }
+
     function purchase(uint256 tokenId, uint256 amount) external payable {
-        Property memory p = properties[tokenId];
+        Property storage p = properties[tokenId];
         require(p.supply > 0, "Invalid tokenId");
+        require(p.supply >= amount, "Not enough supply");
 
         uint256 ethRequired = getTokenPriceInETH(p.priceInUsd, amount);
         require(msg.value >= ethRequired, "Not enough ETH sent");
 
         _safeTransferFrom(p.creator, msg.sender, tokenId, amount, "");
 
-        // Send funds to original creator
         payable(p.creator).transfer(ethRequired);
 
-        // Refund excess
         if (msg.value > ethRequired) {
             payable(msg.sender).transfer(msg.value - ethRequired);
         }
+
+        p.supply -= amount;
+
+        emit PropertyPurchased(msg.sender, tokenId, amount, ethRequired);
+    }
+
+    function leaseLand(
+        uint256 tokenId,
+        uint256 periodDays,
+        uint256 percentage,
+        uint256 leasePriceInUsd
+    ) external payable {
+        require(properties[tokenId].supply > 0, "Invalid tokenId");
+
+        uint256 ethRequired = getTokenPriceInETH(leasePriceInUsd, percentage);
+        require(msg.value >= ethRequired, "Insufficient ETH");
+
+        propertyLeases[tokenId].push(
+            Lease({
+                lessee: msg.sender,
+                percentage: percentage,
+                leaseStart: block.timestamp,
+                leaseEnd: block.timestamp + (periodDays * 1 days),
+                leasePrice: ethRequired
+            })
+        );
+
+        payable(properties[tokenId].creator).transfer(ethRequired);
+
+        emit LandLeased(msg.sender, tokenId, percentage, block.timestamp, block.timestamp + (periodDays * 1 days), ethRequired);
     }
 
     function uri(uint256 tokenId) public view override returns (string memory) {
@@ -83,6 +131,7 @@ contract PropertyToken is ERC1155, Ownable {
     ) public view returns (uint256) {
         int256 ethPrice = getLatestETHPrice();
         require(ethPrice > 0, "Invalid price");
+        // Assume USD has 8 decimals from Chainlink feed
         return (usdPrice * amount * 1e18) / uint256(ethPrice);
     }
 }
